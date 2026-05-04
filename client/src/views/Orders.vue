@@ -8,6 +8,40 @@
     <div v-if="loading" class="loading">{{ t('common.loading') }}</div>
     <div v-else-if="error" class="error">{{ error }}</div>
     <div v-else>
+      <!-- Submitted Restocking Orders section -->
+      <div v-if="restockingOrders.length > 0" class="card restocking-section">
+        <div class="card-header">
+          <h3 class="card-title">Submitted Restocking Orders</h3>
+          <span class="badge info">{{ restockingOrders.length }}</span>
+        </div>
+        <div class="table-container">
+          <table>
+            <thead>
+              <tr>
+                <th>Order ID</th>
+                <th>Items</th>
+                <th>Total Cost</th>
+                <th>Status</th>
+                <th>Submitted</th>
+                <th>Expected Delivery</th>
+                <th>Lead Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="order in restockingOrders" :key="order.id">
+                <td><strong>{{ order.id }}</strong></td>
+                <td>{{ order.items.length }} item{{ order.items.length !== 1 ? 's' : '' }}</td>
+                <td><strong>${{ order.total_cost.toLocaleString() }}</strong></td>
+                <td><span class="badge info">{{ order.status }}</span></td>
+                <td>{{ formatDate(order.submitted_date) }}</td>
+                <td>{{ formatDate(order.expected_delivery) }}</td>
+                <td>{{ getLeadTimeDays(order) }} days</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div class="stats-grid">
         <div class="stat-card success">
           <div class="stat-label">{{ t('status.delivered') }}</div>
@@ -95,6 +129,7 @@ export default {
     const loading = ref(true)
     const error = ref(null)
     const orders = ref([])
+    const restockingOrders = ref([])
 
     // Use shared filters
     const {
@@ -153,15 +188,26 @@ export default {
       })
     }
 
-    onMounted(loadOrders)
+    const getLeadTimeDays = (order) => {
+      const sub = new Date(order.submitted_date)
+      const del = new Date(order.expected_delivery)
+      return Math.round((del - sub) / (1000 * 60 * 60 * 24))
+    }
+
+    onMounted(() => {
+      loadOrders()
+      api.getRestockingOrders().then(data => { restockingOrders.value = data }).catch(() => {})
+    })
 
     return {
       t,
       loading,
       error,
       orders,
+      restockingOrders,
       getOrdersByStatus,
       getOrderStatusClass,
+      getLeadTimeDays,
       formatDate,
       currencySymbol,
       translateProductName,
@@ -275,5 +321,9 @@ export default {
 .item-meta {
   font-size: 0.813rem;
   color: #64748b;
+}
+
+.restocking-section {
+  border-left: 3px solid #2563eb;
 }
 </style>

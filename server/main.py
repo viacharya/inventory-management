@@ -4,6 +4,8 @@ from typing import List, Optional
 from pydantic import BaseModel
 from mock_data import inventory_items, orders, demand_forecasts, backlog_items, spending_summary, monthly_spending, category_spending, recent_transactions, purchase_orders
 
+restocking_orders = []
+
 app = FastAPI(title="Factory Inventory Management System")
 
 # Quarter mapping for date filtering
@@ -303,6 +305,77 @@ def get_monthly_trends():
     result = list(months.values())
     result.sort(key=lambda x: x['month'])
     return result
+
+LEAD_TIME_MAP = {'increasing': 7, 'stable': 14, 'decreasing': 21}
+TREND_ORDER = {'increasing': 0, 'stable': 1, 'decreasing': 2}
+
+@app.get("/api/restocking/recommendations")
+def get_restocking_recommendations(budget: float = 0):
+    """Get recommended items to restock within budget, prioritized by demand trend"""
+    inventory_by_sku = {item['sku']: item for item in inventory_items}
+    sorted_forecasts = sorted(demand_forecasts, key=lambda x: TREND_ORDER.get(x['trend'], 3))
+
+    recommendations = []
+    remaining_budget = budget
+
+    for forecast in sorted_forecasts:
+        sku = forecast['item_sku']
+        inv_item = inventory_by_sku.get(sku)
+        unit_cost = inv_item['unit_cost'] if inv_item else 50.0
+
+        restock_qty = forecast['forecasted_demand']
+        total_cost = restock_qty * unit_cost
+
+        if total_cost <= remaining_budget:
+            recommendations.append({
+                'sku': sku,
+                'name': forecast['item_name'],
+                'trend': forecast['trend'],
+                'current_demand': forecast['current_demand'],
+                'forecasted_demand': forecast['forecasted_demand'],
+                'restock_quantity': restock_qty,
+                'unit_cost': round(unit_cost, 2),
+                'total_cost': round(total_cost, 2),
+                'lead_time_days': LEAD_TIME_MAP.get(forecast['trend'], 14)
+            })
+            remaining_budget -= total_cost
+
+    return {
+        'recommendations': recommendations,
+        'total_cost': round(sum(r['total_cost'] for r in recommendations), 2),
+        'budget': budget,
+        'remaining_budget': round(remaining_budget, 2)
+    }
+
+@app.post("/api/restocking/orders")
+def create_restocking_order(request: dict):
+    """Submit a restocking order"""
+    from datetime import datetime, timedelta
+
+    items = request.get('items', [])
+    budget = request.get('budget', 0)
+
+    today = datetime.now()
+    max_lead_time = max((item.get('lead_time_days', 14) for item in items), default=14)
+    expected_delivery = (today + timedelta(days=max_lead_time)).strftime('%Y-%m-%d')
+
+    order_id = f"RST-{str(len(restocking_orders) + 1).zfill(3)}"
+    order = {
+        'id': order_id,
+        'items': items,
+        'total_cost': round(sum(item.get('total_cost', 0) for item in items), 2),
+        'budget': budget,
+        'status': 'Submitted',
+        'submitted_date': today.strftime('%Y-%m-%d'),
+        'expected_delivery': expected_delivery
+    }
+    restocking_orders.append(order)
+    return order
+
+@app.get("/api/restocking/orders")
+def get_restocking_orders():
+    """Get all submitted restocking orders"""
+    return restocking_orders
 
 if __name__ == "__main__":
     import uvicorn
