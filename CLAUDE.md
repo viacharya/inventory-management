@@ -106,6 +106,9 @@ cd client && npm run build  # Output: client/dist/
 - Tests: `tests/backend/test_*.py`
 - Global styles: `client/src/App.vue`
 
+## Code Style
+- Always document non-obvious logic changes with comments
+
 ## Design System
 - Colors: Slate/gray (`#0f172a`, `#64748b`, `#e2e8f0`)
 - Status colors: green / blue / yellow / red
